@@ -1,0 +1,41 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/nilchain-proxy",
+      "destination": "http://rpc.testnet.nilchain-rpc-proxy.nilogy.xyz"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "require-corp"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-Requested-With, content-type, Authorization"
+        }
+      ]
+    }
+  ],
+  "env": {
+    "API_BASE_PATH": "/nilchain-proxy",
+    "REACT_APP_API_BASE_PATH": "/nilchain-proxy",
+    "NEXT_PUBLIC_API_BASE_PATH": "/nilchain-proxy"
+  }
+}
