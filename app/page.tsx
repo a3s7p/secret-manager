@@ -91,6 +91,7 @@ import {
   Uuid,
   ValuesPermissionsBuilder,
   VmClient,
+  VmClientBuilder,
 } from "@nillion/client-vms";
 
 import {
@@ -1362,14 +1363,22 @@ export default function Page() {
         return;
       }
 
-      const key = await window.keplr.getKey("nillion-chain-testnet-1");
+      const chainId = "nillion-chain-testnet-1";
+      const key = await window.keplr.getKey(chainId);
       const addr = key.bech32Address;
       const seed = await findOrAddUser(addr);
 
       setUserSeed(seed);
 
       setClient(
-        await createClient({ network: "testnet", seed, keplr: window.keplr }),
+        await new VmClientBuilder()
+          .seed(seed)
+          .bootnodeUrl(
+            "https://node-1.photon2.nillion-network.nilogy.xyz:14311/",
+          )
+          .chainUrl("https://rpc.testnet.nilchain-rpc-proxy.nilogy.xyz")
+          .signer(window.keplr.getOfflineSigner(chainId))
+          .build(),
       );
     } catch (err) {
       setLoginError(err as string);
