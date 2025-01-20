@@ -67,6 +67,11 @@ export const DialogView: FC<{ secret: Secret }> = ({ secret }) => {
           <DialogTitle>View Secret</DialogTitle>
           <DialogDescription>Displaying current secret value</DialogDescription>
         </DialogHeader>
+        <p>
+          <b>Store ID:</b>
+          <br />
+          <code>{secret.id || "-"}</code>
+        </p>
         <Textarea
           id="secretValue"
           value={value || "Loading value..."}
