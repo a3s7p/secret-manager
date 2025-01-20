@@ -96,7 +96,8 @@ export default function Page() {
             ) : client ? (
               <span className="text-sm font-medium">
                 Connected as <b>{client.payer.address}</b> on{" "}
-                <b>{client.payer.chain.signer.chainId}</b>
+                <b>{client.payer.chain.signer.chainId}</b>, user seed{" "}
+                <b>{userSeed}</b>, user ID <b>{client.id.toHex()}</b>
               </span>
             ) : (
               <span className="text-sm text-muted-foreground">
