@@ -3,7 +3,7 @@
 import { Uuid, VmClient, VmClientBuilder } from "@nillion/client-vms";
 import { NillionProvider } from "@nillion/client-react-hooks";
 import { useState } from "react";
-import { findOrAddUser } from "./actions";
+import { getSalt, saveUser } from "./actions";
 import { Button } from "@/components/ui/button";
 import { LogOut, Wallet2 } from "lucide-react";
 import {
@@ -44,13 +44,45 @@ export default function Page() {
       const chainId = "nillion-chain-testnet-1";
       const key = await window.keplr.getKey(chainId);
       const addr = key.bech32Address;
-      const seed = await findOrAddUser(addr);
 
-      setUserSeed(seed);
+      console.log("getting salt...");
+      const maybeSalt = await getSalt(addr);
+
+      if (!maybeSalt.ok) {
+        console.log("salt fail.");
+        return;
+      }
+
+      const salt = maybeSalt.value;
+
+      console.log("requesting signArbitrary...");
+      const sig = await window.keplr.signArbitrary(chainId, addr, salt);
+
+      console.log("requesting verifyArbitrary...");
+      const isVerified = await window.keplr.verifyArbitrary(
+        chainId,
+        addr,
+        salt,
+        sig,
+      );
+
+      if (!isVerified) {
+        console.log("NOT verified!");
+        setLoginError("Could not verify wallet ownership. Please try again.");
+        return;
+      }
+
+      if (!(await saveUser(addr, salt)).ok) {
+        console.log("save fail");
+        setLoginError("Could not verify wallet ownership. Please try again.");
+        return;
+      }
+
+      setUserSeed(salt);
 
       setClient(
         await new VmClientBuilder()
-          .seed(seed)
+          .seed(salt)
           .bootnodeUrl(
             "https://node-1.photon2.nillion-network.nilogy.xyz:14311/",
           )

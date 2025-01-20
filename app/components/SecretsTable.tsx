@@ -51,16 +51,22 @@ export const SecretsTable: FC<{ userSeed: Uuid }> = ({ userSeed }) => {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (initialData.value) {
-      if (typeof initialData.value === "string") {
-        console.log(initialData.value);
+    const v = initialData.value;
+
+    if (v && v.ok) {
+      setData(v.value);
+    } else {
+      const msg =
+        initialData.error?.message ||
+        (!initialData.value?.ok && initialData.value?.message);
+
+      if (msg) {
+        console.log(msg);
 
         toast({
           title: "Error when loading data",
-          description: initialData.value,
+          description: msg,
         });
-      } else {
-        setData(initialData.value);
       }
     }
   }, [initialData]);
@@ -138,20 +144,20 @@ export const SecretsTable: FC<{ userSeed: Uuid }> = ({ userSeed }) => {
                 setTimeout(async () => {
                   const res = await upsertSecret(userSeed, secret);
 
-                  if (res) {
-                    console.log("upsert secret result:", res);
-
-                    toast({
-                      title: "Error",
-                      description: res,
-                      variant: "destructive",
-                    });
-                  } else {
+                  if (res.ok) {
                     setData(data.map((v) => (v.id === secret.id ? secret : v)));
 
                     toast({
                       title: "Secret Updated",
                       description: "Secret updated successfully!",
+                    });
+                  } else {
+                    console.log("upsert secret result:", res);
+
+                    toast({
+                      title: "Error",
+                      description: res.message,
+                      variant: "destructive",
                     });
                   }
                 })
@@ -166,20 +172,20 @@ export const SecretsTable: FC<{ userSeed: Uuid }> = ({ userSeed }) => {
 
                   const res = await delSecret(secret);
 
-                  if (res) {
-                    console.log("delete secret result:", res);
-
-                    toast({
-                      title: "Error",
-                      description: res,
-                      variant: "destructive",
-                    });
-                  } else {
+                  if (res.ok) {
                     setData(data.filter((v) => v.id !== secret.id));
 
                     toast({
                       title: "Secret Deleted",
                       description: "Secret deleted successfully!",
+                    });
+                  } else {
+                    console.log("delete secret result:", res);
+
+                    toast({
+                      title: "Error",
+                      description: res.message,
+                      variant: "destructive",
                     });
                   }
                 })
@@ -245,15 +251,7 @@ export const SecretsTable: FC<{ userSeed: Uuid }> = ({ userSeed }) => {
             setTimeout(async () => {
               const res = await upsertSecret(userSeed, secret);
 
-              if (res) {
-                console.log("upsert secret result:", res);
-
-                toast({
-                  title: "Error",
-                  description: res,
-                  variant: "destructive",
-                });
-              } else {
+              if (res.ok) {
                 setTimeout(() => {
                   setData([...data, secret]);
                 });
@@ -261,6 +259,14 @@ export const SecretsTable: FC<{ userSeed: Uuid }> = ({ userSeed }) => {
                 toast({
                   title: "Secret Created",
                   description: "Secret created successfully!",
+                });
+              } else {
+                console.log("upsert secret result:", res);
+
+                toast({
+                  title: "Error",
+                  description: res.message,
+                  variant: "destructive",
                 });
               }
             });
