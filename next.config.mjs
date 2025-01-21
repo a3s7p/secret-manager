@@ -46,11 +46,16 @@ const nextConfig = {
                 const from = join(compiler.options.output.path, "../static");
                 const to = join(compiler.options.output.path, "static");
 
+                console.log("from:", from);
+                console.log("to:", to);
+
                 try {
                   await access(from);
+                  console.log("exists:", from);
                 } catch (error) {
                   // Access check failed, need to create symlink
                   if (error.code === "ENOENT") {
+                    console.log("linking:", from, to);
                     await symlink(to, from, "junction");
                   } else {
                     console.log(
@@ -65,12 +70,6 @@ const nextConfig = {
         }
       })(),
     );
-
-    if (isServer) {
-      config.output.webassemblyModuleFilename = './../static/wasm/[modulehash].wasm';
-    } else {
-      config.output.webassemblyModuleFilename = 'static/wasm/[modulehash].wasm';
-    }
 
     return config;
   },
