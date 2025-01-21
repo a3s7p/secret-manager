@@ -1,42 +1,76 @@
-"use server"
+"use server";
 
-import { Uuid } from "@nillion/client-vms"
-import { sql } from "@vercel/postgres"
-import { Secret } from "./types"
-import assert from "assert"
+import { NilChainAddressPrefix, Uuid } from "@nillion/client-vms";
+import { sql } from "@vercel/postgres";
+import { Secret } from "./types";
+import assert from "assert";
 
-type Result<R> = Promise<{ok: true, value: R} | {ok: false, message: string}>;
+import { Buffer } from "buffer";
+import Cosmos from "@keplr-wallet/cosmos";
+import { StdSignature } from "@keplr-wallet/types";
 
-export const getSalt: (walletAddress: string) => Result<string> = async (walletAddress) => {
+type Result<R> = Promise<
+  { ok: true; value: R } | { ok: false; message: string }
+>;
+
+export const getSalt: (walletAddress: string) => Result<string> = async (
+  walletAddress,
+) => {
   try {
-    const { rows } = await sql`SELECT user_id_seed FROM users WHERE wallet_id = ${walletAddress};`;
+    const { rows } =
+      await sql`SELECT user_id_seed FROM users WHERE wallet_id = ${walletAddress};`;
     assert(rows.length < 2, "user rows >= 2, this should never happen");
     const user = rows.at(0);
 
     if (user) {
-      return {ok: true, value: user.user_id_seed};
+      return { ok: true, value: user.user_id_seed };
     } else {
-      return {ok: true, value: crypto.randomUUID()};
+      return { ok: true, value: crypto.randomUUID() };
     }
   } catch (error) {
-    return {ok: false, message: `Server error: failed to get salt: ${error}`};
+    return { ok: false, message: `Server error: failed to get salt: ${error}` };
   }
-}
+};
 
-export const saveUser: (walletAddress: string, salt: string) => Result<void> = async (walletAddress, salt) => {
+export const saveUser: (
+  token: string,
+  sig: StdSignature,
+) => Result<void> = async (token, sig) => {
   try {
-    await sql`INSERT INTO users (wallet_id, user_id_seed) VALUES (${walletAddress}, ${salt}) ON CONFLICT DO NOTHING;`;
-    return {ok: true, value: undefined}
+    const [addr, salt] = token.split(":", 2);
+
+    const isVerified = Cosmos.verifyADR36Amino(
+      NilChainAddressPrefix,
+      addr,
+      Buffer.from(token, "hex").toString(),
+      new Uint8Array(Buffer.from(sig.pub_key.value, "base64")),
+      new Uint8Array(Buffer.from(sig.signature, "base64")),
+    );
+
+    if (!isVerified) {
+      return {
+        ok: false,
+        message: `Server error: failed to save user: signature failed to verify`,
+      };
+    }
+
+    await sql`INSERT INTO users (wallet_id, user_id_seed) VALUES (${addr}, ${salt}) ON CONFLICT DO NOTHING;`;
+    return { ok: true, value: undefined };
   } catch (error) {
-    return {ok: false, message: `Server error: failed to save user: ${error}`};
+    return {
+      ok: false,
+      message: `Server error: failed to save user: ${error}`,
+    };
   }
-}
+};
 
 // no delUser -- should there be?..
 
 // secrets
 
-export const getSecrets: (userSeed: string) => Result<Secret[]> = async (userSeed) => {
+export const getSecrets: (userSeed: string) => Result<Secret[]> = async (
+  userSeed,
+) => {
   try {
     const { rows } = await sql`
       SELECT store_id, name, created_on, expired_on
@@ -46,21 +80,30 @@ export const getSecrets: (userSeed: string) => Result<Secret[]> = async (userSee
       );
     `;
 
-    return {ok: true, value: rows.map((v) => ({
-      id: v.store_id,
-      name: v.name,
-      value: "",
-      datatype: "text",
-      creationDate: new Date(Date.parse(v.created_on)),
-      expirationDate: new Date(Date.parse(v.expired_on)),
-      permissions: [],
-    }))};
+    return {
+      ok: true,
+      value: rows.map((v) => ({
+        id: v.store_id,
+        name: v.name,
+        value: "",
+        datatype: "text",
+        creationDate: new Date(Date.parse(v.created_on)),
+        expirationDate: new Date(Date.parse(v.expired_on)),
+        permissions: [],
+      })),
+    };
   } catch (error) {
-    return {ok: false, message: `Server error: failed to get secrets: ${error}`};
+    return {
+      ok: false,
+      message: `Server error: failed to get secrets: ${error}`,
+    };
   }
-}
+};
 
-export const upsertSecret : (userSeed: string, secret: Secret) => Result<void> = async (userSeed, secret) => {
+export const upsertSecret: (
+  userSeed: string,
+  secret: Secret,
+) => Result<void> = async (userSeed, secret) => {
   try {
     await sql`
         INSERT INTO secrets (user_id, store_id, name, created_on, expired_on)
@@ -127,24 +170,34 @@ export const upsertSecret : (userSeed: string, secret: Secret) => Result<void> =
       }
     }
 
-    return {ok: true, value: undefined}
+    return { ok: true, value: undefined };
   } catch (error) {
-    return {ok: false, message: `Server error: failed to upsert secret: ${error}.`}
+    return {
+      ok: false,
+      message: `Server error: failed to upsert secret: ${error}.`,
+    };
   }
-}
+};
 
 export const delSecret: (secret: Secret) => Result<void> = async (secret) => {
   try {
-    await sql`DELETE FROM secrets WHERE store_id = ${secret.id as Uuid};`
-    return {ok: true, value: undefined}
+    await sql`DELETE FROM secrets WHERE store_id = ${secret.id as Uuid};`;
+    return { ok: true, value: undefined };
   } catch (error) {
-    return {ok: false, message: `Server error: failed to delete secret: ${error}`}
+    return {
+      ok: false,
+      message: `Server error: failed to delete secret: ${error}`,
+    };
   }
-}
+};
 
 // permissions
 
-export const delPermission: (secretId: Uuid, permType: string, userIdExt: string) => Result<void> = async (secretId, permType, userIdExt) => {
-  await sql`DELETE FROM permissions WHERE sid = ${secretId} AND uid_ext = ${userIdExt} AND perm_type =  ${permType};`
-  return {ok: true, value: undefined}
-}
+export const delPermission: (
+  secretId: Uuid,
+  permType: string,
+  userIdExt: string,
+) => Result<void> = async (secretId, permType, userIdExt) => {
+  await sql`DELETE FROM permissions WHERE sid = ${secretId} AND uid_ext = ${userIdExt} AND perm_type =  ${permType};`;
+  return { ok: true, value: undefined };
+};

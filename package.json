@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
+    "@keplr-wallet/cosmos": "^0.12.175",
     "@keplr-wallet/types": "^0.12.170",
     "@nillion/client-react-hooks": "^0.2.1",
     "@nillion/client-vms": "^0.2.1",

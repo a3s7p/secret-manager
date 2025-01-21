@@ -49,32 +49,37 @@ export default function Page() {
       const maybeSalt = await getSalt(addr);
 
       if (!maybeSalt.ok) {
-        console.log("salt fail.");
+        console.log("getting salt failed");
         return;
       }
 
       const salt = maybeSalt.value;
+      const userToken = `${addr}:${salt}`;
 
       console.log("requesting signArbitrary...");
-      const sig = await window.keplr.signArbitrary(chainId, addr, salt);
+      const sig = await window.keplr.signArbitrary(chainId, addr, userToken);
 
-      console.log("requesting verifyArbitrary...");
-      const isVerified = await window.keplr.verifyArbitrary(
-        chainId,
-        addr,
-        salt,
-        sig,
-      );
+      // console.log("requesting verifyArbitrary...");
+      // const isVerified = await window.keplr.verifyArbitrary(
+      //   chainId,
+      //   addr,
+      //   salt,
+      //   sig,
+      // );
 
-      if (!isVerified) {
-        console.log("NOT verified!");
-        setLoginError("Could not verify wallet ownership. Please try again.");
-        return;
-      }
+      // if (!isVerified) {
+      //   console.log("NOT verified!");
+      //   setLoginError("Could not verify wallet ownership. Please try again.");
+      //   return;
+      // }
 
-      if (!(await saveUser(addr, salt)).ok) {
-        console.log("save fail");
-        setLoginError("Could not verify wallet ownership. Please try again.");
+      const maybeSaved = await saveUser(userToken, sig);
+
+      if (!maybeSaved.ok) {
+        console.log("saving user failed");
+        setLoginError(
+          `Could not verify wallet ownership: ${maybeSaved.message}`,
+        );
         return;
       }
 
@@ -86,7 +91,7 @@ export default function Page() {
           .bootnodeUrl(
             "https://node-1.photon2.nillion-network.nilogy.xyz:14311/",
           )
-          .chainUrl("https://rpc.testnet.nilchain-rpc-proxy.nilogy.xyz")
+          .chainUrl("https://rpc.testnet.nilchain-rpc-proxy.nilogy.xyz") // this is what needed changing
           .signer(window.keplr.getOfflineSigner(chainId))
           .build(),
       );
