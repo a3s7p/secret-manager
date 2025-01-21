@@ -1,14 +1,6 @@
 import { access, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
-let userConfig = undefined
-
-try {
-  userConfig = await import('./v0-user-next.config')
-} catch (e) {
-  // ignore error
-}
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
@@ -62,7 +54,7 @@ const nextConfig = {
                     await symlink(to, from, "junction");
                   } else {
                     console.log(
-                      `SymlinkWebpackPlugin: Unexpected failure.  symlink ${from} -> ${to}`,
+                      `SymlinkWebpackPlugin: Unexpected failure. symlink ${from} -> ${to}`,
                     );
                     throw error;
                   }
@@ -76,28 +68,6 @@ const nextConfig = {
 
     return config;
   },
-}
-
-mergeConfig(nextConfig, userConfig)
-
-function mergeConfig(nextConfig, userConfig) {
-  if (!userConfig) {
-    return
-  }
-
-  for (const key in userConfig) {
-    if (
-      typeof nextConfig[key] === 'object' &&
-      !Array.isArray(nextConfig[key])
-    ) {
-      nextConfig[key] = {
-        ...nextConfig[key],
-        ...userConfig[key],
-      }
-    } else {
-      nextConfig[key] = userConfig[key]
-    }
-  }
 }
 
 export default nextConfig

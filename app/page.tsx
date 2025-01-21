@@ -3,7 +3,7 @@
 import { Uuid, VmClient, VmClientBuilder } from "@nillion/client-vms";
 import { NillionProvider } from "@nillion/client-react-hooks";
 import { useState } from "react";
-import { getSalt, saveUser } from "./actions";
+import { getAuthChallenge, completeAuthChallenge } from "./actions";
 import { Button } from "@/components/ui/button";
 import { LogOut, Wallet2 } from "lucide-react";
 import {
@@ -45,48 +45,40 @@ export default function Page() {
       const key = await window.keplr.getKey(chainId);
       const addr = key.bech32Address;
 
-      console.log("getting salt...");
-      const maybeSalt = await getSalt(addr);
+      console.log(`getting auth challenge for ${addr}...`);
+      const maybeToken = await getAuthChallenge(addr);
 
-      if (!maybeSalt.ok) {
-        console.log("salt fail.");
+      if (!maybeToken.ok) {
+        console.log("getting auth challenge failed");
         return;
       }
-
-      const salt = maybeSalt.value;
 
       console.log("requesting signArbitrary...");
-      const sig = await window.keplr.signArbitrary(chainId, addr, salt);
+      const token = maybeToken.value;
+      const sig = await window.keplr.signArbitrary(chainId, addr, token);
+      const maybeUserSeed = await completeAuthChallenge(token, sig);
 
-      console.log("requesting verifyArbitrary...");
-      const isVerified = await window.keplr.verifyArbitrary(
-        chainId,
-        addr,
-        salt,
-        sig,
-      );
+      if (!maybeUserSeed.ok) {
+        console.log("completing auth failed");
 
-      if (!isVerified) {
-        console.log("NOT verified!");
-        setLoginError("Could not verify wallet ownership. Please try again.");
+        setLoginError(
+          `Could not verify wallet ownership: ${maybeUserSeed.message}`,
+        );
+
         return;
       }
 
-      if (!(await saveUser(addr, salt)).ok) {
-        console.log("save fail");
-        setLoginError("Could not verify wallet ownership. Please try again.");
-        return;
-      }
+      const userSeed = maybeUserSeed.value;
 
-      setUserSeed(salt);
+      setUserSeed(userSeed);
 
       setClient(
         await new VmClientBuilder()
-          .seed(salt)
+          .seed(userSeed)
           .bootnodeUrl(
             "https://node-1.photon2.nillion-network.nilogy.xyz:14311/",
           )
-          .chainUrl("https://rpc.testnet.nilchain-rpc-proxy.nilogy.xyz")
+          .chainUrl("https://rpc.testnet.nilchain-rpc-proxy.nilogy.xyz") // this is what needed changing
           .signer(window.keplr.getOfflineSigner(chainId))
           .build(),
       );

@@ -1,42 +1,96 @@
-"use server"
+"use server";
 
-import { Uuid } from "@nillion/client-vms"
-import { sql } from "@vercel/postgres"
-import { Secret } from "./types"
-import assert from "assert"
+import { sql } from "@vercel/postgres";
+import { Secret } from "./types";
+import assert from "assert";
+import { verifyADR36Amino } from "@keplr-wallet/cosmos";
+import { StdSignature } from "@keplr-wallet/types";
+import { fromBase64 } from "@cosmjs/encoding";
+import crypto, { generateKeyPairSync, sign, verify } from "crypto";
 
-type Result<R> = Promise<{ok: true, value: R} | {ok: false, message: string}>;
+type Result<R> = Promise<
+  { ok: true; value: R } | { ok: false; message: string }
+>;
 
-export const getSalt: (walletAddress: string) => Result<string> = async (walletAddress) => {
+const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+
+export const getAuthChallenge: (
+  walletAddress: string,
+) => Result<string> = async (walletAddress) => {
   try {
-    const { rows } = await sql`SELECT user_id_seed FROM users WHERE wallet_id = ${walletAddress};`;
+    const { rows } =
+      await sql`SELECT user_id_seed FROM users WHERE wallet_id = ${walletAddress};`;
+
     assert(rows.length < 2, "user rows >= 2, this should never happen");
-    const user = rows.at(0);
+    const salt = rows.at(0)?.user_id_seed || crypto.randomUUID();
+    const expiresAt = Math.floor(Date.now() / 1000 + 60);
+    const nonce = crypto.randomBytes(16).toString("hex");
+    const digest = [walletAddress, salt, expiresAt, nonce].join(":");
+    const sig = sign(null, Buffer.from(digest), privateKey).toString("hex");
 
-    if (user) {
-      return {ok: true, value: user.user_id_seed};
-    } else {
-      return {ok: true, value: crypto.randomUUID()};
-    }
+    return {
+      ok: true,
+      value: [digest, sig].join(":"),
+    };
   } catch (error) {
-    return {ok: false, message: `Server error: failed to get salt: ${error}`};
+    return { ok: false, message: `Server error: failed to get salt: ${error}` };
   }
-}
+};
 
-export const saveUser: (walletAddress: string, salt: string) => Result<void> = async (walletAddress, salt) => {
+export const completeAuthChallenge: (
+  token: string,
+  userSig: StdSignature,
+) => Result<string> = async (token, userSig) => {
   try {
-    await sql`INSERT INTO users (wallet_id, user_id_seed) VALUES (${walletAddress}, ${salt}) ON CONFLICT DO NOTHING;`;
-    return {ok: true, value: undefined}
+    const [addr, salt, expiresAt, nonce, ourSig] = token.split(":", 5);
+    const digest = [addr, salt, expiresAt, nonce].join(":");
+
+    const wasSignedHere = verify(
+      null,
+      Buffer.from(digest),
+      publicKey,
+      Buffer.from(ourSig, "hex"),
+    );
+
+    if (!wasSignedHere) {
+      return {
+        ok: false,
+        message: `Server error: failed to complete auth challenge: server signature failed to verify`,
+      };
+    }
+
+    const wasSignedThere = verifyADR36Amino(
+      "nillion",
+      addr,
+      token,
+      fromBase64(userSig.pub_key.value),
+      fromBase64(userSig.signature),
+    );
+
+    if (!wasSignedThere) {
+      return {
+        ok: false,
+        message: `Server error: failed to complete auth challenge: client signature failed to verify`,
+      };
+    }
+
+    await sql`INSERT INTO users (wallet_id, user_id_seed) VALUES (${addr}, ${salt}) ON CONFLICT DO NOTHING;`;
+    return { ok: true, value: salt };
   } catch (error) {
-    return {ok: false, message: `Server error: failed to save user: ${error}`};
+    return {
+      ok: false,
+      message: `Server error: failed to save user: ${error}`,
+    };
   }
-}
+};
 
 // no delUser -- should there be?..
 
 // secrets
 
-export const getSecrets: (userSeed: string) => Result<Secret[]> = async (userSeed) => {
+export const getSecrets: (userSeed: string) => Result<Secret[]> = async (
+  userSeed,
+) => {
   try {
     const { rows } = await sql`
       SELECT store_id, name, created_on, expired_on
@@ -46,31 +100,40 @@ export const getSecrets: (userSeed: string) => Result<Secret[]> = async (userSee
       );
     `;
 
-    return {ok: true, value: rows.map((v) => ({
-      id: v.store_id,
-      name: v.name,
-      value: "",
-      datatype: "text",
-      creationDate: new Date(Date.parse(v.created_on)),
-      expirationDate: new Date(Date.parse(v.expired_on)),
-      permissions: [],
-    }))};
+    return {
+      ok: true,
+      value: rows.map((v) => ({
+        id: v.store_id,
+        name: v.name,
+        value: "",
+        datatype: "text",
+        creationDate: new Date(Date.parse(v.created_on)),
+        expirationDate: new Date(Date.parse(v.expired_on)),
+        permissions: [],
+      })),
+    };
   } catch (error) {
-    return {ok: false, message: `Server error: failed to get secrets: ${error}`};
+    return {
+      ok: false,
+      message: `Server error: failed to get secrets: ${error}`,
+    };
   }
-}
+};
 
-export const upsertSecret : (userSeed: string, secret: Secret) => Result<void> = async (userSeed, secret) => {
+export const upsertSecret: (
+  userSeed: string,
+  secret: Secret,
+) => Result<void> = async (userSeed, secret) => {
   try {
     await sql`
         INSERT INTO secrets (user_id, store_id, name, created_on, expired_on)
-        SELECT id, ${secret.id as Uuid}, ${secret.name}, ${secret.creationDate.toISOString()}, ${secret.expirationDate.toISOString()}
+        SELECT id, ${secret.id}, ${secret.name}, ${secret.creationDate.toISOString()}, ${secret.expirationDate.toISOString()}
         FROM users
         WHERE user_id_seed = ${userSeed}
         ON CONFLICT (store_id)
         DO UPDATE
         SET
-          store_id = ${secret.id as Uuid},
+          store_id = ${secret.id},
           expired_on = ${secret.expirationDate.toISOString()};
     `;
 
@@ -79,7 +142,7 @@ export const upsertSecret : (userSeed: string, secret: Secret) => Result<void> =
         await sql`
           INSERT INTO permissions (sid, uid_ext, perm_type, granted)
           VALUES (
-            ${secret.id as Uuid},
+            ${secret.id},
             ${perm.uid},
             'read',
             CURRENT_DATE
@@ -91,7 +154,7 @@ export const upsertSecret : (userSeed: string, secret: Secret) => Result<void> =
         await sql`
           INSERT INTO permissions (sid, uid_ext, perm_type, granted)
           VALUES (
-            ${secret.id as Uuid},
+            ${secret.id},
             ${perm.uid},
             'write',
             CURRENT_DATE
@@ -103,7 +166,7 @@ export const upsertSecret : (userSeed: string, secret: Secret) => Result<void> =
         await sql`
           INSERT INTO permissions (sid, uid_ext, perm_type, granted)
           VALUES (
-            ${secret.id as Uuid},
+            ${secret.id},
             ${perm.uid},
             'delete',
             CURRENT_DATE
@@ -116,7 +179,7 @@ export const upsertSecret : (userSeed: string, secret: Secret) => Result<void> =
           await sql`
             INSERT INTO permissions (sid, uid_ext, perm_type, compute_program_id, granted)
             VALUES (
-              ${secret.id as Uuid},
+              ${secret.id},
               ${perm.uid},
               'compute',
               ${pid},
@@ -127,24 +190,34 @@ export const upsertSecret : (userSeed: string, secret: Secret) => Result<void> =
       }
     }
 
-    return {ok: true, value: undefined}
+    return { ok: true, value: undefined };
   } catch (error) {
-    return {ok: false, message: `Server error: failed to upsert secret: ${error}.`}
+    return {
+      ok: false,
+      message: `Server error: failed to upsert secret: ${error}.`,
+    };
   }
-}
+};
 
 export const delSecret: (secret: Secret) => Result<void> = async (secret) => {
   try {
-    await sql`DELETE FROM secrets WHERE store_id = ${secret.id as Uuid};`
-    return {ok: true, value: undefined}
+    await sql`DELETE FROM secrets WHERE store_id = ${secret.id};`;
+    return { ok: true, value: undefined };
   } catch (error) {
-    return {ok: false, message: `Server error: failed to delete secret: ${error}`}
+    return {
+      ok: false,
+      message: `Server error: failed to delete secret: ${error}`,
+    };
   }
-}
+};
 
 // permissions
 
-export const delPermission: (secretId: Uuid, permType: string, userIdExt: string) => Result<void> = async (secretId, permType, userIdExt) => {
-  await sql`DELETE FROM permissions WHERE sid = ${secretId} AND uid_ext = ${userIdExt} AND perm_type =  ${permType};`
-  return {ok: true, value: undefined}
-}
+export const delPermission: (
+  secretId: string,
+  permType: string,
+  userIdExt: string,
+) => Result<void> = async (secretId, permType, userIdExt) => {
+  await sql`DELETE FROM permissions WHERE sid = ${secretId} AND uid_ext = ${userIdExt} AND perm_type =  ${permType};`;
+  return { ok: true, value: undefined };
+};
