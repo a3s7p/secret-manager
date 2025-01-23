@@ -1,4 +1,4 @@
-# Nillion Secret Vault
+# Nillion Secret Manager
 
 This is an application for managing secrets stored on the [Nillion](https://nillion.com) network.
 

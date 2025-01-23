@@ -36,7 +36,7 @@ export default function Page() {
     try {
       if (!window.keplr) {
         setLoginError(
-          "You do not seem to have Keplr Wallet installed. This is required for the Secret Vault to work.",
+          "You do not seem to have Keplr Wallet installed. This is required for the Secret Manager to work.",
         );
         return;
       }
@@ -156,7 +156,7 @@ export default function Page() {
             <>
               <div className="flex flex-col items-center justify-center h-full my-auto">
                 <h1 className="text-3xl font-bold mb-4">
-                  Nillion Secret Vault
+                  Nillion Secret Manager
                 </h1>
                 <p className="text-lg text-center max-w-md mb-4">
                   Connect your Keplr wallet to manage your secrets!

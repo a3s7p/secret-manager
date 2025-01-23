@@ -3,8 +3,8 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: "Nillion Secret Vault",
-  description: "App to store secrets on Nillion",
+  title: "Nillion Secret Manager",
+  description: "App to store and manage secrets on Nillion",
 };
 
 export default function RootLayout({
